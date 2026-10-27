@@ -8,6 +8,7 @@ import { openPrivacy, openSupport } from '../lib/links';
 import { NotificationSettings } from '../ui/NotificationSettings';
 import { PageHeader } from '../ui/PageHeader';
 import { SettingsGroup, settingsStyles } from '../ui/SettingsGroup';
+import { ViewSettings } from '../ui/ViewSettings';
 import { Paper } from '../ui/Paper';
 import { dimPressed, tintPressed } from '../ui/press';
 import { useLayoutClass, WIDE } from '../ui/responsive';
@@ -22,7 +23,7 @@ function versionLabel(): string {
   return [c?.version, build && `(${build})`].filter(Boolean).join(' ');
 }
 
-// 설정(스펙 "설정"): 프로필 카드 → 알림 → 정보 → 로그아웃·계정 삭제 카드. 아이폰은 오늘의 계정 버튼, 아이패드·Mac은 사이드바 맨 아래에서 연다
+// 설정(스펙 "설정"): 프로필 카드 → 보기 → 알림 → 정보 → 로그아웃·계정 삭제 카드. 아이폰은 오늘의 계정 버튼, 아이패드·Mac은 사이드바 맨 아래에서 연다
 export function SettingsScreen({ db, onClose }: { db: Db; onClose: () => void }) {
   const account = useAccount();
   const centered = useLayoutClass() !== 'compact';
@@ -33,6 +34,8 @@ export function SettingsScreen({ db, onClose }: { db: Db; onClose: () => void })
         <PageHeader title="설정" onBack={onClose} largeBack />
 
         <Profile account={account} />
+
+        <ViewSettings />
 
         <NotificationSettings db={db} />
 

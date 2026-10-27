@@ -20,16 +20,20 @@ export type DragReorder = {
 };
 
 type Options = {
-  ids: string[]; // 끌 수 있는 줄들(보이는 순서). 이 안에서만 자리를 바꾼다
+  ids: string[]; // 끌 수 있는 줄들(보이는 순서)
+  // 이 줄이 자리를 바꿀 수 있는 범위(ids 안에서 이어진 줄들, 보이는 순서). 없으면 ids 전체.
+  // 오늘 장을 상태별로 묶으면 같은 묶음 안에서만 옮긴다(머리글은 ids에 없다)
+  scopeOf?: (id: string) => string[];
   reduce: boolean; // 동작 줄이기: 비켜 가기·놓기 애니메이션 없이 바로
   scrollTo: (offset: number) => void;
   measureViewport: (done: (top: number, height: number) => void) => void; // 목록이 보이는 칸(창 기준)
   onActive: (id: string | null) => void; // 끄는 동안 목록 스크롤을 막고 끄는 칸을 맨 위에 그린다
-  onDrop: (id: string, from: number, to: number) => void; // 새 순서를 먼저 보여 주고 저장한다
+  onDrop: (id: string, from: number, to: number) => void; // 범위 안 자리(from → to). 새 순서를 먼저 보여 주고 저장한다
 };
 
 type Session = {
   id: string;
+  ids: string[]; // 자리를 바꾸는 범위
   from: number;
   to: number;
   hs: number[];
@@ -80,7 +84,7 @@ export function useDragReorder(options: Options) {
     const to = dropIndex(s.hs, s.from, dy);
     if (to === s.to) return;
     s.to = to;
-    const ids = opts.current.ids;
+    const ids = s.ids;
     for (let k = 0; k < s.hs.length; k++) {
       if (k === s.from) continue;
       const shift = shiftFor(k, s.from, to, s.hs[s.from]);
@@ -130,12 +134,13 @@ export function useDragReorder(options: Options) {
     },
     begin: (id) => {
       if (session.current) return false;
-      const ids = opts.current.ids;
+      const ids = opts.current.scopeOf?.(id) ?? opts.current.ids;
       const from = ids.indexOf(id);
       if (from < 0) return false;
       if (pendingReset.current) resetAll();
       const s: Session = {
         id,
+        ids,
         from,
         to: from,
         hs: ids.map((i) => heights.get(i) ?? ROW_H),

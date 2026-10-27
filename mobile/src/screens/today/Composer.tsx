@@ -2,17 +2,17 @@ import { memo, type Ref, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { type ItemKind, MAX_TEXT } from '../../items/repo';
-import { Chip } from '../../ui/Chip';
 import { Popover, useAnchor } from '../../ui/Popover';
 import { haptic } from '../../ui/haptics';
 import { dimPressed } from '../../ui/press';
 import { colors, fonts } from '../../ui/theme';
 import { LegendClose, SymbolLegend } from './SymbolLegend';
+import { Txt } from '../../ui/Txt';
 import { useScaledText } from '../../ui/typeScale';
 
-const KINDS: { kind: ItemKind; symbol: string; label: string }[] = [
-  { kind: 'task', symbol: '○', label: '할 일' },
-  { kind: 'note', symbol: '–', label: '메모' },
+const KINDS: { kind: ItemKind; label: string }[] = [
+  { kind: 'task', label: '할 일' },
+  { kind: 'note', label: '메모' },
 ];
 
 type Props = {
@@ -23,20 +23,23 @@ type Props = {
   onCapture?: () => void; // 없으면 마이크·정리 버튼을 두지 않는다
   // 할 일만 받는 칸(언젠가 목록): 할 일·메모 칩과 기호 설명 없이 입력줄 하나. placeholder·읽는 이름을 바꾼다
   taskOnly?: { placeholder: string; label: string };
+  // 오늘 장: 할 일·메모 탭. 고른 탭이 목록을 나누고 새 줄의 종류도 정한다(taskOnly면 쓰지 않는다)
+  kind?: ItemKind;
+  onKindChange?: (kind: ItemKind) => void;
+  counts?: Record<ItemKind, number>; // 탭 옆에 적는 줄 수
   // 저장하고 성공 여부를 돌려준다. 성공하면 칸을 비운다.
   onSubmit: (kind: ItemKind, text: string) => Promise<boolean>;
 };
 
-// 입력칸과 종류 칩. 글자를 칠 때마다 여기만 다시 그려진다(목록 줄은 그대로).
-export const Composer = memo(function Composer({ inputRef, rowRef, captureRef, voice = false, onCapture, taskOnly, onSubmit }: Props) {
-  const [kind, setKind] = useState<ItemKind>('task');
+// 할 일·메모 탭과 입력칸. 글자를 칠 때마다 여기만 다시 그려진다(목록 줄은 그대로).
+export const Composer = memo(function Composer({ inputRef, rowRef, captureRef, voice = false, onCapture, taskOnly, kind = 'task', onKindChange, counts, onSubmit }: Props) {
   const [text, setText] = useState('');
   const info = useAnchor();
   const inputStyle = useScaledText(styles.input);
   const pickKind = (next: ItemKind) => {
     if (next === kind) return;
     haptic.select();
-    setKind(next);
+    onKindChange?.(next);
   };
 
   // 빈 칸에서 완료를 누르면 키보드만 내린다
@@ -50,6 +53,47 @@ export const Composer = memo(function Composer({ inputRef, rowRef, captureRef, v
 
   return (
     <View style={styles.inputBlock}>
+      {!taskOnly && (
+        <>
+          <View style={styles.tabRow} accessibilityRole="tablist">
+            {KINDS.map((k) => {
+              const selected = kind === k.kind;
+              return (
+                <Pressable
+                  key={k.kind}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={counts ? `${k.label} ${counts[k.kind]}개` : k.label}
+                  style={dimPressed([styles.tab, selected && styles.tabSelected])}
+                  onPress={() => pickKind(k.kind)}
+                >
+                  <Txt variant={selected ? 'medium' : 'body'} style={[styles.tabText, !selected && styles.tabTextOff]}>
+                    {k.label}
+                    {counts && <Txt style={styles.tabCount}>{` ${counts[k.kind]}`}</Txt>}
+                  </Txt>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              ref={info.ref}
+              accessibilityRole="button"
+              accessibilityLabel="기호 설명"
+              accessibilityState={{ expanded: info.anchor !== null }}
+              style={dimPressed(styles.info)}
+              onPress={info.open}
+            >
+              <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+                <Circle cx={10} cy={10} r={8.2} stroke={colors.muted} strokeWidth={1.3} />
+                <Path d="M10 9v5" stroke={colors.muted} strokeWidth={1.4} strokeLinecap="round" />
+                <Circle cx={10} cy={6.2} r={1.1} fill={colors.muted} />
+              </Svg>
+            </Pressable>
+          </View>
+          <Popover anchor={info.anchor} align="left" width={300} label="기호 설명" onClose={info.close} footer={<LegendClose onPress={info.close} />}>
+            <SymbolLegend kind={kind} />
+          </Popover>
+        </>
+      )}
       <View ref={rowRef} style={styles.inputRow}>
         <TextInput
           style={inputStyle}
@@ -87,32 +131,6 @@ export const Composer = memo(function Composer({ inputRef, rowRef, captureRef, v
           </Pressable>
         )}
       </View>
-      {!taskOnly && (
-        <>
-          <View style={styles.kindRow}>
-            {KINDS.map((k) => (
-              <Chip key={k.kind} label={k.label} symbol={k.symbol} selected={kind === k.kind} onPress={() => pickKind(k.kind)} />
-            ))}
-            <Pressable
-              ref={info.ref}
-              accessibilityRole="button"
-              accessibilityLabel="기호 설명"
-              accessibilityState={{ expanded: info.anchor !== null }}
-              style={dimPressed(styles.info)}
-              onPress={info.open}
-            >
-              <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-                <Circle cx={10} cy={10} r={8.2} stroke={colors.muted} strokeWidth={1.3} />
-                <Path d="M10 9v5" stroke={colors.muted} strokeWidth={1.4} strokeLinecap="round" />
-                <Circle cx={10} cy={6.2} r={1.1} fill={colors.muted} />
-              </Svg>
-            </Pressable>
-          </View>
-          <Popover anchor={info.anchor} align="left" width={300} label="기호 설명" onClose={info.close} footer={<LegendClose onPress={info.close} />}>
-            <SymbolLegend kind={kind} />
-          </Popover>
-        </>
-      )}
     </View>
   );
 });
@@ -121,7 +139,13 @@ const styles = StyleSheet.create({
   inputBlock: { gap: 14 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: colors.ink, paddingBottom: 6 },
   input: { flex: 1, minHeight: 44, paddingHorizontal: 6, fontSize: 16, fontFamily: fonts.body, color: colors.ink },
-  kindRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // 탭 아래 밑줄 하나가 고른 탭을 가리킨다. 기호 설명 버튼은 탭 줄 오른쪽 끝
+  tabRow: { flexDirection: 'row', alignItems: 'center', gap: 22, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.lineSoft },
+  tab: { minHeight: 44, justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -1 },
+  tabSelected: { borderBottomColor: colors.navy },
+  tabText: { fontSize: 16 },
+  tabTextOff: { color: colors.muted },
+  tabCount: { fontSize: 13, color: colors.muted },
   organize: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  info: { width: 44, height: 44, marginLeft: -6, alignItems: 'center', justifyContent: 'center' },
+  info: { width: 44, height: 44, marginLeft: 'auto', marginRight: -10, alignItems: 'center', justifyContent: 'center' },
 });

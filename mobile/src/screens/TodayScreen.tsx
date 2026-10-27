@@ -35,6 +35,7 @@ import { useReduceMotion } from '../ui/useReduceMotion';
 import { ItemRow } from './today/ItemRow';
 import { openRow } from './today/swipe';
 import { useDragReorder } from './today/useDragReorder';
+import { dayIndexAfterMove, type PageRow, pageRows, SECTION_LABEL } from './today/sections';
 import { MarginRule, NOTE_MARGIN, RuledFill, useRuleGap } from './today/NotebookPage';
 import { Ribbon } from './today/Ribbon';
 import type { LinkAction } from '../lib/deepLink';
@@ -54,6 +55,7 @@ import { useSpace } from '../ui/typeScale';
 import { PANEL_W, TodayPanel } from './today/TodayPanel';
 import { accountInitial, useAccount } from '../lib/account';
 import { TodayTour, type TourRefs } from './today/TodayTour';
+import { useGroupByStatus } from '../lib/groupByStatus';
 
 // 개발용·출시 빌드에서만 말로 적기 시트를 불러온다(Expo Go에서는 네이티브 모듈이 없어 import 시 오류).
 const VoiceSheet: typeof import('./today/VoiceSheet').VoiceSheet | null = voiceAvailable
@@ -90,13 +92,15 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   const afterVoice = useRef<{ text: string; auto: boolean } | null>(null); // 말로 적기 시트가 내려간 뒤 열 정리 시트
   const [notice, setNotice] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastSpec | null>(null);
+  const [tab, setTab] = useState<ItemKind>('task'); // 할 일·메모 탭. 새 줄의 종류도 이것이다
+  const grouped = useGroupByStatus(); // 할 일을 진행 중 → 할 일 → 끝낸 일로 묶어 보기(설정 화면에서 끈다)
   const [postponing, setPostponing] = useState<{ id: string; prev: 'open' | 'doing' } | null>(null); // 언제로 미룰지 고르는 줄
   const account = useAccount();
   const busy = useRef(false);
   const reorder = useRef(false); // 상태·중요를 바꿨거나 포스트잇을 정리했다: 다음에 불러온 목록을 넣을 때만 자리 이동을 애니메이션한다
   const reduce = useReduceMotion();
   const inputRef = useRef<TextInput>(null);
-  const listRef = useRef<FlatList<Item>>(null);
+  const listRef = useRef<FlatList<PageRow>>(null);
   const pageRef = useRef<View>(null);
   const scrollY = useRef(new Animated.Value(0)).current; // 여백선이 목록 머리를 따라 움직이게
   const [headerH, setHeaderH] = useState(0);
@@ -120,6 +124,14 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   const emptyRef = useRef<View>(null);
   const ribbonRef = useRef<View>(null);
   const noRef = useRef<View>(null);
+
+  // 그날 줄(자리값 순)을 고른 탭·묶음대로 펼친 목록. 머리글 줄이 섞여 있다
+  const rows = useMemo(() => pageRows(items, tab, grouped), [items, tab, grouped]);
+  const scopes = useMemo(() => new Map(rows.flatMap((r) => (r.type === 'item' ? [[r.key, r.scope] as const] : []))), [rows]);
+  const counts = useMemo(
+    () => ({ task: items.filter((i) => i.kind === 'task').length, note: items.filter((i) => i.kind === 'note').length }),
+    [items],
+  );
 
   // 표지가 다 펼쳐진 뒤에만 true가 된다(Main이 Cover의 onOpened로 알려 준다). 그래서 기다리지 않고 바로 포커스한다.
   useEffect(() => {
@@ -291,7 +303,7 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   const onRevealEdit = useEvent((id: string, bottom: number) => {
     pageRef.current?.measureInWindow((_x, y, _w, h) => {
       if (bottom <= y + h - REVEAL_GAP) return;
-      const index = items.findIndex((i) => i.id === id);
+      const index = rows.findIndex((r) => r.key === id);
       if (index < 0) return;
       try {
         listRef.current?.scrollToIndex({ index, viewPosition: 1, viewOffset: -REVEAL_GAP, animated: !reduce });
@@ -302,17 +314,23 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   });
   const hideToast = useCallback((key: number) => setToast((t) => (t?.key === key ? null : t)), []);
 
-  // ── 길게 눌러 끌어 순서 바꾸기(오늘 장의 모든 줄). 새 순서를 먼저 보여 주고 저장한다. 못 하면 다시 읽어 되돌린다 ──
+  // ── 길게 눌러 끌어 순서 바꾸기(보이는 탭의 줄, 묶어 보면 같은 묶음 안에서). 새 순서를 먼저 보여 주고 저장한다. 못 하면 다시 읽어 되돌린다 ──
   const [dragging, setDragging] = useState<string | null>(null);
-  const ids = useMemo(() => items.map((i) => i.id), [items]);
+  const ids = useMemo(() => [...scopes.keys()], [scopes]);
+  const scopeOf = (id: string) => scopes.get(id) ?? [];
+  // 범위 안 자리(from → to)를 그날 전체 순서의 자리로 바꿔 저장한다. 다른 탭·묶음 줄 사이의 자리는 그대로
   const commitMove = (id: string, from: number, to: number) => {
-    setItems((prev) => (prev[from]?.id === id ? moveIndex(prev, from, to) : prev));
-    void run(() => moveItem(db, id, to)).then((ok) => {
+    const order = items.map((i) => i.id);
+    const was = order.indexOf(id);
+    const at = dayIndexAfterMove(order, scopeOf(id), from, to);
+    setItems((prev) => (prev[was]?.id === id ? moveIndex(prev, was, at) : prev));
+    void run(() => moveItem(db, id, at)).then((ok) => {
       if (!ok) onChanged();
     });
   };
   const drag = useDragReorder({
     ids,
+    scopeOf,
     reduce,
     scrollTo: (offset) => listRef.current?.scrollToOffset({ offset, animated: false }),
     measureViewport: (done) => pageRef.current?.measureInWindow((_x, y, _w, h) => done(y, h)),
@@ -321,9 +339,10 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   });
   // 스크린 리더: 한 칸씩 옮기고 몇 번째가 됐는지 읽어 준다
   const onMove = useEvent((id: string, delta: -1 | 1) => {
-    const from = items.findIndex((i) => i.id === id);
+    const scope = scopeOf(id);
+    const from = scope.indexOf(id);
     const to = from + delta;
-    if (from < 0 || to < 0 || to >= items.length) return;
+    if (from < 0 || to < 0 || to >= scope.length) return;
     commitMove(id, from, to);
     AccessibilityInfo.announceForAccessibility(`${to + 1}번째 줄로 옮겼어요`);
   });
@@ -360,9 +379,21 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   const tasks = items.filter((i) => i.kind === 'task' && i.status !== 'migrated' && i.status !== 'dropped');
   const doneCount = tasks.filter((i) => i.status === 'done').length;
 
-  const count = items.length;
-  const renderItem = useCallback<ListRenderItem<Item>>(
-    ({ item, index }) => (
+  const firstId = rows.find((r) => r.type === 'item')?.key; // 코치마크가 가리키는 첫 줄(머리글 빼고)
+  const renderItem = useCallback<ListRenderItem<PageRow>>(
+    ({ item: row }) => {
+      if (row.type === 'head') {
+        return (
+          <View style={[styles.sectionHead, { height: ruleGap }]}>
+            <Txt variant="hand" accessibilityRole="header" style={styles.sectionHeadText}>
+              {SECTION_LABEL[row.section]}
+            </Txt>
+          </View>
+        );
+      }
+      const { item, scope } = row;
+      const at = scope.indexOf(item.id);
+      return (
       <ItemRow
         id={item.id}
         kind={item.kind}
@@ -379,14 +410,15 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
         onPriorityFull={onPriorityFull}
         onRevealEdit={onRevealEdit}
         reorder={drag.reorder}
-        canMoveUp={index > 0}
-        canMoveDown={index < count - 1}
+        canMoveUp={at > 0}
+        canMoveDown={at < scope.length - 1}
         onMove={onMove}
-        tourRowRef={index === 0 ? firstRowRef : undefined}
-        tourSymbolRef={index === 0 ? firstSymbolRef : undefined}
+        tourRowRef={item.id === firstId ? firstRowRef : undefined}
+        tourSymbolRef={item.id === firstId ? firstSymbolRef : undefined}
       />
-    ),
-    [priorityFull, count, onAdvance, onTogglePriority, onEdit, onPostpone, onDrop, onDelete, onPriorityFull, onRevealEdit, drag.reorder, onMove],
+      );
+    },
+    [priorityFull, ruleGap, firstId, onAdvance, onTogglePriority, onEdit, onPostpone, onDrop, onDelete, onPriorityFull, onRevealEdit, drag.reorder, onMove],
   );
 
   // 포스트잇만 목록 머리에 둬서 후보가 많아도 함께 스크롤된다. 입력칸은 목록 위에 고정한다
@@ -462,10 +494,20 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
         <Ribbon targetRef={ribbonRef} onPress={onOpenArchive} style={{ right: SCREEN_X + eveningW + RIBBON_GAP }} />
       )}
   
-      {/* 입력칸과 할 일·메모 칩은 고정. 그 아래 목록만 스크롤된다.
-          칩과 목록 사이는 좁게 두고, 숨 쉴 자리는 목록 맨 위 여백(LIST_TOP)으로 넣어 스크롤하면 함께 올라가게 한다 */}
+      {/* 할 일·메모 탭과 입력칸은 고정. 그 아래 고른 탭의 목록만 스크롤된다.
+          입력칸과 목록 사이는 좁게 두고, 숨 쉴 자리는 목록 맨 위 여백(LIST_TOP)으로 넣어 스크롤하면 함께 올라가게 한다 */}
       <View style={styles.writing}>
-        <Composer inputRef={inputRef} rowRef={composerRowRef} captureRef={captureRef} voice={VoiceSheet !== null} onCapture={onCapture} onSubmit={submit} />
+        <Composer
+          inputRef={inputRef}
+          rowRef={composerRowRef}
+          captureRef={captureRef}
+          voice={VoiceSheet !== null}
+          onCapture={onCapture}
+          kind={tab}
+          onKindChange={setTab}
+          counts={counts}
+          onSubmit={submit}
+        />
 
         {/* 공책 한 쪽: 여백선은 목록 뒤에 깔리고, 빈 줄은 목록 꼬리에서 함께 스크롤된다 */}
         <View ref={pageRef} style={styles.page}>
@@ -475,8 +517,8 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
           <AnimatedList
             ref={listRef}
             style={styles.list}
-            data={items}
-            keyExtractor={(i) => i.id}
+            data={rows}
+            keyExtractor={(r) => r.key}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             contentContainerStyle={styles.listContent}
@@ -520,7 +562,7 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
 
   // 처음 한 번 코치마크: 시트·메뉴가 떠 있거나 줄을 끄는 중에는 숨겼다가, 닫히면 그 단계부터 다시 띄운다.
   // 빈 날은 기호·밀기 단계가 빈 자리를 가리킨다. 넓은 배치에서 사이드바가 보이면 끈 대신 사이드바 '지난 기록'
-  const empty = items.length === 0;
+  const empty = firstId === undefined; // 고른 탭에 줄이 없다(빈 장 안내가 보인다)
   const tourRefs = useMemo<TourRefs>(
     () => ({
       page: pageRef,
@@ -596,7 +638,7 @@ const LOAD_FAILED = '오늘 기록을 불러오지 못했어요. 잠시 뒤에 �
 const EMPTY_TITLE = '아직 적은 줄이 없어요';
 const EMPTY_HINT = '위 칸에 한 줄 적어 볼까요?';
 // 목록은 gesture-handler의 FlatList: 줄 밀기(Pan)와 목록 스크롤이 서로 손가락을 빼앗지 않게 조율된다
-const AnimatedList = Animated.createAnimatedComponent(FlatList<Item>);
+const AnimatedList = Animated.createAnimatedComponent(FlatList<PageRow>);
 const LIST_TOP = 14; // 목록 맨 위 여백(스크롤하면 함께 올라간다)
 const REORDER = LayoutAnimation.create(220, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity); // 끈의 44pt 누르는 영역이 하루 마무리 버튼에 겹치지 않게
 
@@ -664,6 +706,15 @@ const styles = StyleSheet.create({
   },
   empty: { color: colors.muted },
   emptyHint: { color: colors.muted, fontSize: 14 },
+  // 묶음 머리글: 공책 한 줄 높이, 글 자리에서 시작해 줄 바로 위에 앉는다
+  sectionHead: {
+    justifyContent: 'flex-end',
+    paddingLeft: NOTE_MARGIN - SCREEN_X + 8,
+    paddingBottom: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.ruled,
+  },
+  sectionHeadText: { fontSize: 20, lineHeight: 26 },
   footerHidden: { opacity: 0 },
   footer: { alignSelf: 'center', marginTop: 24, marginBottom: 24, fontSize: 20, color: colors.muted },
 });

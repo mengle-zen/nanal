@@ -1,15 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, AppState, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, AppState, Linking, StyleSheet, View } from 'react-native';
 import type { Db } from '../db/types';
 import { ALL_ON, type NotificationKind } from '../notifications/plan';
 import { type NotificationSettings as Settings, readSettings, writeSettings } from '../notifications/prefs';
 import { hasNotificationPermission, notificationsAvailable, requestNotificationPermission, rescheduleNotifications } from '../notifications/scheduler';
 import { SettingsGroup, settingsStyles } from './SettingsGroup';
-import { EASE_OUT } from './motion';
-import { colors } from './theme';
+import { SmallSwitch } from './SmallSwitch';
 import { Txt } from './Txt';
-import { useReduceMotion } from './useReduceMotion';
 
 const ROWS: { kind: NotificationKind; label: string; sub: string }[] = [
   { kind: 'morning', label: '아침 계획', sub: '오전 8시' },
@@ -104,42 +102,8 @@ export function NotificationSettings({ db }: { db: Db }) {
   );
 }
 
-// 종이 화면에 맞춘 작은 스위치(40×24). iOS 기본 스위치는 실제로 그려지는 크기가 자리와 달라
-// 줄이면 위로 떠 보여서 직접 그린다. 누르는 자리는 hitSlop으로 44pt를 지킨다
-function SmallSwitch({ label, hint, value, disabled, onChange }: { label: string; hint?: string; value: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
-  const reduce = useReduceMotion();
-  const pos = useRef(new Animated.Value(value ? 1 : 0)).current;
-  useEffect(() => {
-    Animated.timing(pos, { toValue: value ? 1 : 0, duration: reduce ? 0 : 160, easing: EASE_OUT, useNativeDriver: true }).start();
-  }, [value, reduce, pos]);
-  return (
-    <Pressable
-      accessibilityRole="switch"
-      accessibilityLabel={label}
-      accessibilityHint={hint}
-      accessibilityState={{ checked: value, disabled }}
-      disabled={disabled}
-      hitSlop={SWITCH_SLOP}
-      onPress={() => onChange(!value)}
-      style={[styles.track, value ? styles.trackOn : styles.trackOff]}
-    >
-      <Animated.View style={[styles.knob, { transform: [{ translateX: pos.interpolate({ inputRange: [0, 1], outputRange: [0, KNOB_TRAVEL] }) }] }]} />
-    </Pressable>
-  );
-}
-
-const SWITCH_W = 40;
-const SWITCH_H = 24;
-const KNOB = 20;
-const KNOB_TRAVEL = SWITCH_W - KNOB - 4;
-const SWITCH_SLOP = { top: 10, bottom: 10, left: 4, right: 4 };
-
 const styles = StyleSheet.create({
   kindRow: { minHeight: 52, paddingVertical: 4 },
   dim: { opacity: 0.45 },
   flex: { flex: 1 },
-  track: { width: SWITCH_W, height: SWITCH_H, borderRadius: SWITCH_H / 2, padding: 2, justifyContent: 'center' },
-  trackOn: { backgroundColor: colors.navy },
-  trackOff: { backgroundColor: colors.dotOff },
-  knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: colors.popover, shadowColor: colors.shadow, shadowOpacity: 0.25, shadowRadius: 1.5, shadowOffset: { width: 0, height: 1 } },
 });
