@@ -32,6 +32,9 @@ PLIST
 
 AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
 
+# 손글씨 글꼴은 저장소에 없어 받아 둔다(npm install이 받지만, 못 받았으면 여기서 멈춘다)
+"$ROOT/scripts/fetch-fonts.sh"
+
 cd "$ROOT/mobile"
 # Supabase 주소·키가 빠진 채 빌드되면 앱이 서버에 붙지 못한다. 값은 출력하지 않는다.
 if [[ ! -f .env ]]; then

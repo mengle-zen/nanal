@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { colors, fonts } from '../../ui/theme';
+import { colors, fonts, HAND } from '../../ui/theme';
 import { type NoteMode, RULE_GAP } from './notebook';
 import { FADE_MS, LEAVE_MS, leaveDelay, POP_MS, WRITE_MS, writeDelay } from './notePages';
 
@@ -114,9 +114,10 @@ export function Ink({ i, pop = false, left, right, top, maxWidth, grid = true, s
   );
 }
 
+// 손글씨(title·head)는 Txt를 거치지 않아 HAND 배율을 여기서 곱한다(나눔펜 36·30과 같은 자리)
 const FACE = {
-  title: { fontFamily: fonts.hand, fontSize: 36, color: colors.navy },
-  head: { fontFamily: fonts.hand, fontSize: 30, color: colors.navy },
+  title: { fontFamily: fonts.hand, fontSize: 36 * HAND, color: colors.navy },
+  head: { fontFamily: fonts.hand, fontSize: 30 * HAND, color: colors.navy },
   body: { fontFamily: fonts.title, fontSize: 17, color: colors.navy },
   note: { fontFamily: fonts.note, fontSize: 19, color: colors.noteRed },
   date: { fontFamily: fonts.note, fontSize: 19, color: colors.muted },

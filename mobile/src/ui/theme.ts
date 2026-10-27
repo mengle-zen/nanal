@@ -50,24 +50,31 @@ export const colors = {
 
 // 글꼴은 app.json의 expo-font 플러그인으로 앱에 넣어 두어 실행하자마자 쓸 수 있다(불러오기를 기다리지 않는다).
 // iOS는 TTF의 PostScript 이름으로, Android는 assets/fonts에 복사된 파일 이름으로 찾는다.
+// 손글씨는 교보문고 손글씨 2025 이유빈. 라이선스상 파일을 저장소에 올리지 않고 scripts/fetch-fonts.sh로 받는다.
 export const fonts = Platform.select({
   ios: {
     title: 'GowunBatang-Regular',
     body: 'IBMPlexSansKR-Regular',
     medium: 'IBMPlexSansKR-Medium',
-    hand: 'NanumPen-Regular', // 나눔펜 TTF의 이름표는 'Nanum Pen'이다(NanumPenScript 아님)
+    hand: 'KyoboHandwriting2025lyb',
     note: 'Gaegu-Bold', // 개구 굵게. 온보딩 노트의 또박또박한 메모 글씨
   },
   default: {
     title: 'GowunBatang_400Regular',
     body: 'IBMPlexSansKR_400Regular',
     medium: 'IBMPlexSansKR_500Medium',
-    hand: 'NanumPenScript_400Regular',
+    hand: 'KyoboHandwriting2025lyb', // 파일 이름(KyoboHandwriting2025lyb.otf) 그대로
     note: 'Gaegu_700Bold',
   },
 });
 
-// 글자 크기·줄 높이. 제목은 고운바탕, 본문은 플렉스, 손글씨는 나눔펜.
+// 손글씨 글꼴이 같은 크기에서 그리는 글자의 배율. 눈금(type·typeWide)과 화면의 크기는 나눔펜 기준으로 적혀 있다.
+// 교보 손글씨는 같은 fontSize에서 나눔펜보다 약 30% 넓고 크다(22pt에서 '노트의 주인' 폭 168 vs 127,
+// 18~19pt가 나눔펜 22pt와 비슷). 자리를 그대로 두려고 Txt가 손글씨의 fontSize에만 이만큼 곱한다.
+// 줄 높이는 그대로 둔다(공책 줄 간격이 바뀌지 않게). Txt를 거치지 않는 글자(NoteInk)는 직접 곱한다.
+export const HAND = 0.82;
+
+// 글자 크기·줄 높이. 제목은 고운바탕, 본문은 플렉스, 손글씨는 교보 손글씨(크기는 나눔펜 기준, HAND 참고).
 export const type = {
   display: { fontFamily: fonts.title, fontSize: 30, lineHeight: 38 },
   h2: { fontFamily: fonts.title, fontSize: 22, lineHeight: 30 },

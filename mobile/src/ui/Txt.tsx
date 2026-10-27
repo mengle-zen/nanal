@@ -1,5 +1,5 @@
 import { type StyleProp, StyleSheet, Text, type TextProps, type TextStyle, useWindowDimensions } from 'react-native';
-import { colors, fonts, type as scale, typeWide } from './theme';
+import { colors, fonts, HAND, type as scale, typeWide } from './theme';
 import { scaleText, type TextScale, useTextScale } from './typeScale';
 
 // body·medium·title·hand는 예전 이름(글꼴만 정한다). 나머지는 theme의 type 눈금(크기·줄 높이까지).
@@ -36,10 +36,15 @@ export function Txt({ variant = 'body', compact = false, style, ...rest }: Props
 }
 
 // Txt가 그리는 글자 모양 그대로. 제자리에서 고치는 입력칸이 글과 똑같아 보이게 같이 쓴다.
+// 손글씨 글꼴이면 글자 크기만 HAND배로 줄인다(눈금과 화면이 준 크기는 나눔펜 기준이다. theme.ts의 HAND).
 export function txtStyle(k: TextScale, variant: TxtVariant, style?: StyleProp<TextStyle>): StyleProp<TextStyle> {
-  return k.wide
-    ? [scaleText([wide.base, wide[variant]], k.tokenScale), scaleText(style, k.ownScale)]
-    : [styles.base, styles[variant], style];
+  const flat: TextStyle = StyleSheet.flatten<TextStyle>(
+    k.wide
+      ? [scaleText([wide.base, wide[variant]], k.tokenScale), scaleText(style, k.ownScale)]
+      : [styles.base, styles[variant], style],
+  );
+  if (flat.fontFamily !== fonts.hand || typeof flat.fontSize !== 'number') return flat;
+  return { ...flat, fontSize: flat.fontSize * HAND };
 }
 
 const styles = StyleSheet.create({
