@@ -13,15 +13,15 @@ type Props = {
   backLabel?: string; // 돌아갈 곳 이름
   backAccessibilityLabel?: string;
   right?: ReactNode; // 맨 위 줄 오른쪽에 놓을 버튼 등
-  // 돌아가는 곳이 오늘이라 사이드바가 대신할 수 있다. 사이드바가 있으면(아이패드·Mac) 돌아가기를 숨긴다.
+  // 돌아가는 곳이 오늘이라 사이드바·탭바가 대신할 수 있다. 그것이 있으면 돌아가기를 숨긴다.
   // 기본은 backLabel이 '오늘'일 때. 월간 돌아보기의 '‹ 지난 기록'처럼 다른 곳으로 가면 늘 보인다.
   sidebarBack?: boolean;
   largeBack?: boolean; // 돌아가기 화살표를 크게, 머리를 넉넉하게(설정)
 };
 
-// 오늘 아래 화면들의 머리. 맨 위 왼쪽에 돌아가기, 그 아래 왼쪽 정렬 큰 제목. 사이드바가 있으면 오늘로 가는 돌아가기는 숨긴다.
+// 오늘 아래 화면들의 머리. 맨 위 왼쪽에 돌아가기, 그 아래 왼쪽 정렬 큰 제목. 사이드바·탭바가 있으면 오늘로 가는 돌아가기는 숨긴다.
 export function PageHeader({ title, subtitle, onBack, backLabel = '오늘', backAccessibilityLabel, right, sidebarBack = backLabel === '오늘', largeBack = false }: Props) {
-  const hideBack = usePane().sidebar && sidebarBack;
+  const hideBack = usePane().nav && sidebarBack;
   return (
     <View style={[styles.header, hideBack && styles.headerWide, largeBack && styles.headerLarge]}>
       {hideBack ? (

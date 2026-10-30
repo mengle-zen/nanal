@@ -1,19 +1,10 @@
 import { memo, type Ref, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { type ItemKind, MAX_TEXT } from '../../items/repo';
-import { Popover, useAnchor } from '../../ui/Popover';
-import { haptic } from '../../ui/haptics';
 import { dimPressed } from '../../ui/press';
 import { colors, fonts } from '../../ui/theme';
-import { LegendClose, SymbolLegend } from './SymbolLegend';
-import { Txt } from '../../ui/Txt';
 import { useScaledText } from '../../ui/typeScale';
-
-const KINDS: { kind: ItemKind; label: string }[] = [
-  { kind: 'task', label: '할 일' },
-  { kind: 'note', label: '메모' },
-];
 
 type Props = {
   inputRef?: Ref<TextInput>;
@@ -21,26 +12,18 @@ type Props = {
   captureRef?: Ref<View>; // 〃 마이크·연필
   voice?: boolean; // 말로 적기를 쓸 수 있으면 마이크, 아니면 정리해서 넣기
   onCapture?: () => void; // 없으면 마이크·정리 버튼을 두지 않는다
-  // 할 일만 받는 칸(언젠가 목록): 할 일·메모 칩과 기호 설명 없이 입력줄 하나. placeholder·읽는 이름을 바꾼다
+  // 할 일만 받는 칸(언젠가 목록): placeholder·읽는 이름을 바꾼다
   taskOnly?: { placeholder: string; label: string };
-  // 오늘 장: 할 일·메모 탭. 고른 탭이 목록을 나누고 새 줄의 종류도 정한다(taskOnly면 쓰지 않는다)
-  kind?: ItemKind;
-  onKindChange?: (kind: ItemKind) => void;
-  counts?: Record<ItemKind, number>; // 탭 옆에 적는 줄 수
+  kind?: ItemKind; // 새 줄의 종류. 오늘 장은 할 일·메모 탭(KindTabs)이 정한다
+  pill?: boolean; // 휴대폰 오늘 장 아래에 붙는 둥근 입력칸. 아니면 밑줄 한 줄
   // 저장하고 성공 여부를 돌려준다. 성공하면 칸을 비운다.
   onSubmit: (kind: ItemKind, text: string) => Promise<boolean>;
 };
 
-// 할 일·메모 탭과 입력칸. 글자를 칠 때마다 여기만 다시 그려진다(목록 줄은 그대로).
-export const Composer = memo(function Composer({ inputRef, rowRef, captureRef, voice = false, onCapture, taskOnly, kind = 'task', onKindChange, counts, onSubmit }: Props) {
+// 입력칸. 글자를 칠 때마다 여기만 다시 그려진다(목록 줄은 그대로).
+export const Composer = memo(function Composer({ inputRef, rowRef, captureRef, voice = false, onCapture, taskOnly, kind = 'task', pill = false, onSubmit }: Props) {
   const [text, setText] = useState('');
-  const info = useAnchor();
   const inputStyle = useScaledText(styles.input);
-  const pickKind = (next: ItemKind) => {
-    if (next === kind) return;
-    haptic.select();
-    onKindChange?.(next);
-  };
 
   // 빈 칸에서 완료를 누르면 키보드만 내린다
   const submit = async () => {
@@ -52,100 +35,55 @@ export const Composer = memo(function Composer({ inputRef, rowRef, captureRef, v
   };
 
   return (
-    <View style={styles.inputBlock}>
-      {!taskOnly && (
-        <>
-          <View style={styles.tabRow} accessibilityRole="tablist">
-            {KINDS.map((k) => {
-              const selected = kind === k.kind;
-              return (
-                <Pressable
-                  key={k.kind}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={counts ? `${k.label} ${counts[k.kind]}개` : k.label}
-                  style={dimPressed([styles.tab, selected && styles.tabSelected])}
-                  onPress={() => pickKind(k.kind)}
-                >
-                  <Txt variant={selected ? 'medium' : 'body'} style={[styles.tabText, !selected && styles.tabTextOff]}>
-                    {k.label}
-                    {counts && <Txt style={styles.tabCount}>{` ${counts[k.kind]}`}</Txt>}
-                  </Txt>
-                </Pressable>
-              );
-            })}
-            <Pressable
-              ref={info.ref}
-              accessibilityRole="button"
-              accessibilityLabel="기호 설명"
-              accessibilityState={{ expanded: info.anchor !== null }}
-              style={dimPressed(styles.info)}
-              onPress={info.open}
-            >
-              <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-                <Circle cx={10} cy={10} r={8.2} stroke={colors.muted} strokeWidth={1.3} />
-                <Path d="M10 9v5" stroke={colors.muted} strokeWidth={1.4} strokeLinecap="round" />
-                <Circle cx={10} cy={6.2} r={1.1} fill={colors.muted} />
-              </Svg>
-            </Pressable>
-          </View>
-          <Popover anchor={info.anchor} align="left" width={300} label="기호 설명" onClose={info.close} footer={<LegendClose onPress={info.close} />}>
-            <SymbolLegend kind={kind} />
-          </Popover>
-        </>
+    <View ref={rowRef} style={pill ? styles.pill : styles.inputRow}>
+      {pill && (
+        <Svg width={14} height={14} viewBox="0 0 14 14" fill="none" accessible={false}>
+          <Path d="M7 2v10M2 7h10" stroke={colors.muted} strokeWidth={1.4} strokeLinecap="round" />
+        </Svg>
       )}
-      <View ref={rowRef} style={styles.inputRow}>
-        <TextInput
-          style={inputStyle}
-          ref={inputRef}
-          placeholder={taskOnly?.placeholder ?? (kind === 'task' ? '할 일 한 줄' : '메모 한 줄')}
-          placeholderTextColor={colors.muted}
-          maxLength={MAX_TEXT}
-          accessibilityLabel={taskOnly?.label ?? (kind === 'task' ? '새 할 일' : '새 메모')}
-          value={text}
-          onChangeText={setText}
-          onSubmitEditing={submit}
-          submitBehavior="submit"
-          returnKeyType="done"
-        />
-        {onCapture && (
-          <Pressable
-            ref={captureRef}
-            accessibilityRole="button"
-            accessibilityLabel={voice ? '말로 적기' : '정리해서 넣기'}
-            accessibilityHint={voice ? '말한 내용을 할 일과 메모로 정리해요' : '두서없이 쓴 글을 할 일과 메모로 정리해요'}
-            style={dimPressed(styles.organize)}
-            onPress={onCapture}
-          >
-            {voice ? (
-              <Svg width={22} height={22} viewBox="0 0 18 18" fill="none">
-                <Rect x={6} y={1.5} width={6} height={10} rx={3} stroke={colors.inkSoft} strokeWidth={1.4} />
-                <Path d="M3 8.5a6 6 0 0 0 12 0M9 14.5v2.5" stroke={colors.inkSoft} strokeWidth={1.4} strokeLinecap="round" />
-              </Svg>
-            ) : (
-              <Svg width={22} height={22} viewBox="0 0 20 20" fill="none">
-                <Path d="M4 16l1-4 8.5-8.5a2.1 2.1 0 0 1 3 3L8 15l-4 1Z" stroke={colors.inkSoft} strokeWidth={1.4} strokeLinejoin="round" />
-                <Path d="M12 5l3 3" stroke={colors.inkSoft} strokeWidth={1.4} />
-              </Svg>
-            )}
-          </Pressable>
-        )}
-      </View>
+      <TextInput
+        style={inputStyle}
+        ref={inputRef}
+        placeholder={taskOnly?.placeholder ?? (kind === 'task' ? '할 일 한 줄' : '메모 한 줄')}
+        placeholderTextColor={colors.muted}
+        maxLength={MAX_TEXT}
+        accessibilityLabel={taskOnly?.label ?? (kind === 'task' ? '새 할 일' : '새 메모')}
+        value={text}
+        onChangeText={setText}
+        onSubmitEditing={submit}
+        submitBehavior="submit"
+        returnKeyType="done"
+      />
+      {onCapture && (
+        <Pressable
+          ref={captureRef}
+          accessibilityRole="button"
+          accessibilityLabel={voice ? '말로 적기' : '정리해서 넣기'}
+          accessibilityHint={voice ? '말한 내용을 할 일과 메모로 정리해요' : '두서없이 쓴 글을 할 일과 메모로 정리해요'}
+          style={dimPressed(styles.organize)}
+          onPress={onCapture}
+        >
+          {voice ? (
+            <Svg width={22} height={22} viewBox="0 0 18 18" fill="none">
+              <Rect x={6} y={1.5} width={6} height={10} rx={3} stroke={colors.inkSoft} strokeWidth={1.4} />
+              <Path d="M3 8.5a6 6 0 0 0 12 0M9 14.5v2.5" stroke={colors.inkSoft} strokeWidth={1.4} strokeLinecap="round" />
+            </Svg>
+          ) : (
+            <Svg width={22} height={22} viewBox="0 0 20 20" fill="none">
+              <Path d="M4 16l1-4 8.5-8.5a2.1 2.1 0 0 1 3 3L8 15l-4 1Z" stroke={colors.inkSoft} strokeWidth={1.4} strokeLinejoin="round" />
+              <Path d="M12 5l3 3" stroke={colors.inkSoft} strokeWidth={1.4} />
+            </Svg>
+          )}
+        </Pressable>
+      )}
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  inputBlock: { gap: 14 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: colors.ink, paddingBottom: 6 },
+  // 휴대폰 아래 입력칸: 옅은 종이색 둥근 칸, 왼쪽에 + 표시
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, borderRadius: 24, paddingLeft: 16, backgroundColor: colors.chipSelected },
   input: { flex: 1, minHeight: 44, paddingHorizontal: 6, fontSize: 16, fontFamily: fonts.body, color: colors.ink },
-  // 탭 아래 밑줄 하나가 고른 탭을 가리킨다. 기호 설명 버튼은 탭 줄 오른쪽 끝
-  tabRow: { flexDirection: 'row', alignItems: 'center', gap: 22, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.lineSoft },
-  tab: { minHeight: 44, justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -1 },
-  tabSelected: { borderBottomColor: colors.navy },
-  tabText: { fontSize: 16 },
-  tabTextOff: { color: colors.muted },
-  tabCount: { fontSize: 13, color: colors.muted },
   organize: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  info: { width: 44, height: 44, marginLeft: 'auto', marginRight: -10, alignItems: 'center', justifyContent: 'center' },
 });

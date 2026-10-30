@@ -50,6 +50,11 @@ describe('pageRows', () => {
     expect(shape(pageRows(day, 'note', true))).toEqual(['n1']);
   });
 
+  it('머리글 숫자: 묶음의 줄 수, 끝낸 일은 끝낸 일(✓)만', () => {
+    const heads = pageRows(day, 'task', true).flatMap((r) => (r.type === 'head' ? [[r.section, r.count]] : []));
+    expect(heads).toEqual([['doing', 2], ['open', 2], ['done', 1]]);
+  });
+
   it('빈 묶음은 머리글도 없다', () => {
     expect(shape(pageRows([item('x', 'task', 'open')], 'task', true))).toEqual(['#open', 'x']);
   });

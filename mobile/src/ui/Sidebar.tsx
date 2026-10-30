@@ -138,7 +138,7 @@ function PanelIcon() {
 }
 
 // 줄 쳐진 한 쪽
-function TodayIcon() {
+export function TodayIcon() {
   return (
     <Svg width={ICON} height={ICON} viewBox="0 0 20 20" fill="none">
       <Rect x={3.5} y={2.5} width={13} height={15} rx={1.5} stroke={colors.inkSoft} strokeWidth={1.4} />
@@ -149,7 +149,7 @@ function TodayIcon() {
 }
 
 // 하루 마무리의 등잔(책상 스탠드)
-function LampIcon() {
+export function LampIcon() {
   return (
     <Svg width={ICON} height={ICON} viewBox="0 0 20 20" fill="none">
       <Path d="M6 3.5h8l2.5 6h-13L6 3.5Z" stroke={colors.inkSoft} strokeWidth={1.4} strokeLinejoin="round" />
@@ -159,7 +159,7 @@ function LampIcon() {
 }
 
 // 지난 기록의 책갈피 끈(휴대폰 화면 맨 위 끈과 같은 모양)
-function RibbonIcon() {
+export function RibbonIcon() {
   return (
     <Svg width={ICON} height={ICON} viewBox="0 0 20 20" fill="none">
       <Path d="M6.5 2h7v16l-3.5-3-3.5 3V2Z" fill={colors.navy} />

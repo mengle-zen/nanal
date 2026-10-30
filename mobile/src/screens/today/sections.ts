@@ -6,8 +6,10 @@ export type Section = 'doing' | 'open' | 'done';
 export const SECTIONS: readonly Section[] = ['doing', 'open', 'done'];
 export const SECTION_LABEL: Record<Section, string> = { doing: '진행 중', open: '할 일', done: '끝낸 일' };
 
-// head: 묶음 머리글 한 줄. item: 공책 줄 하나, scope는 그 줄을 끌어 옮길 수 있는 범위(같은 탭·같은 묶음, 보이는 순서)
-export type PageRow = { type: 'head'; key: string; section: Section } | { type: 'item'; key: string; item: Item; scope: string[] };
+// head: 묶음 머리글 한 줄(count: 머리글 옆 숫자). item: 공책 줄 하나, scope는 그 줄을 끌어 옮길 수 있는 범위(같은 탭·같은 묶음, 보이는 순서)
+export type PageRow =
+  | { type: 'head'; key: string; section: Section; count: number }
+  | { type: 'item'; key: string; item: Item; scope: string[] };
 
 export function sectionOf(item: Pick<Item, 'status'>): Section {
   if (item.status === 'doing') return 'doing';
@@ -28,7 +30,9 @@ export function pageRows(items: readonly Item[], tab: ItemKind, grouped: boolean
     const group = mine.filter((i) => sectionOf(i) === section);
     if (group.length === 0) continue;
     const scope = group.map((i) => i.id);
-    rows.push({ type: 'head', key: `head:${section}`, section });
+    // 끝낸 일 묶음의 숫자는 끝낸 일(✓)만 센다. 옮긴 일·안 하기로 한 일은 끝낸 게 아니다
+    const count = section === 'done' ? group.filter((i) => i.status === 'done').length : group.length;
+    rows.push({ type: 'head', key: `head:${section}`, section, count });
     for (const item of group) rows.push({ type: 'item', key: item.id, item, scope });
   }
   return rows;

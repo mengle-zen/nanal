@@ -3,7 +3,7 @@ import { CommonActions, DefaultTheme, NavigationContainer, StackActions, type Th
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, AppState, Keyboard, LayoutAnimation, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, AppState, Keyboard, LayoutAnimation, Linking, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import type { Db } from '../db/types';
@@ -31,6 +31,7 @@ import { Paper } from '../ui/Paper';
 import { type Pane, PaneContext } from '../ui/pane';
 import { useLayoutClass, WIDE } from '../ui/responsive';
 import { Sidebar, SidebarOpenButton, type SidebarKey } from '../ui/Sidebar';
+import { TabBar } from '../ui/TabBar';
 import { useReduceMotion } from '../ui/useReduceMotion';
 import { takePendingAction } from '../widget/pendingAction';
 import { reloadWidgets } from '../widget/reload';
@@ -144,7 +145,7 @@ function MainContent({ db, userId }: { db: Db; userId: string }) {
   linkActionRef.current = linkAction;
   const [ritualOpen, setRitualOpen] = useState(false); // 월초 정리 시트
   const [tourDue, setTourDue] = useState(false); // 온보딩 뒤 오늘 장 코치마크를 아직 안 봤다(그동안 입력칸 키보드를 올리지 않는다)
-  const sidebarArchiveRef = useRef<View>(null); // 넓은 배치에서 코치마크가 가리키는 사이드바 '지난 기록'
+  const sidebarArchiveRef = useRef<View>(null); // 코치마크가 가리키는 '지난 기록'(넓은 배치는 사이드바 줄, 휴대폰은 탭바 탭)
   const [ritualChecked, setRitualChecked] = useState(false); // 첫 실행에 월초 정리를 따져 봤다(그 전에는 입력칸 키보드를 올리지 않는다)
   const [resumeTick, setResumeTick] = useState(0); // 앱이 다시 앞으로 나올 때마다 하나씩(새 달이 됐을 수 있다)
   const screenRef = useRef<Screen | null>(null);
@@ -190,13 +191,16 @@ function MainContent({ db, userId }: { db: Db; userId: string }) {
     }
   }, [reduce, sidebarCollapsed, sidebarOpen]);
   const sidebar = wide && screen === 'today' && !sidebarCollapsed;
+  // 휴대폰은 맨 아래 탭바가 사이드바 몫을 한다. 키보드가 올라와 있는 동안은 입력칸 아래로 숨긴다
+  const tabBar = !wide && screen === 'today';
+  const keyboardUp = useKeyboardUp();
   const sidebarDrawn = wide && screen === 'today' && sidebarMounted;
   const canReopenSidebar = wide && screen === 'today' && sidebarCollapsed;
   const insets = useSafeAreaInsets();
   const { width: windowW } = useWindowDimensions();
   const pane = useMemo<Pane>(
-    () => ({ sidebar, width: windowW - insets.left - insets.right - (sidebar ? WIDE.sidebarWidth : 0) }),
-    [sidebar, windowW, insets.left, insets.right],
+    () => ({ nav: sidebar || tabBar, width: windowW - insets.left - insets.right - (sidebar ? WIDE.sidebarWidth : 0) }),
+    [sidebar, tabBar, windowW, insets.left, insets.right],
   );
 
   // 위젯·컨트롤에서 열면 오늘 화면으로 가서(표지가 아직 덮여 있으면 펼친 뒤) 동작을 넘긴다. 온보딩 중이면 화면은 그대로 둔다.
@@ -343,7 +347,7 @@ function MainContent({ db, userId }: { db: Db; userId: string }) {
     requestSync();
   }, [refresh, requestSync]);
 
-  // 사이드바에서 고르면 밀어 넣지 않고 칸만 바꾼다(넓은 배치의 스택은 애니메이션이 없다).
+  // 사이드바·탭바에서 고르면 밀어 넣지 않고 칸만 바꾼다(넓은 배치는 바로, 휴대폰은 흐리게).
   // 오늘은 늘 스택 맨 아래에 두어(입력하던 글·스크롤이 그대로) 그 위에 고른 화면 하나만 얹는다.
   const selectSection = useCallback((key: SidebarKey) => {
     if (!nav.isReady()) return;
@@ -398,6 +402,9 @@ function MainContent({ db, userId }: { db: Db; userId: string }) {
   }, []);
   // 표지가 펼쳐지고 월초 정리를 따져 본 뒤, 시트·위젯 동작·다른 화면이 없을 때만 띄운다(있으면 닫힐 때까지 미룬다)
   const tourReady = tourDue && coverSettled && ritualChecked && !ritualOpen && route === 'today' && !linkAction && !deletingAccount;
+
+  // 탭바·사이드바로 오가는 하루 마무리·지난 기록은 밀어 넣지 않는다(휴대폰은 흐리게 바뀐다)
+  const switchAnimation = wide || reduce ? 'none' : 'fade';
 
   return (
     <View style={styles.root}>
@@ -487,10 +494,10 @@ function MainContent({ db, userId }: { db: Db; userId: string }) {
                         />
                       )}
                     </Stack.Screen>
-                    {/* 하루 마무리는 등잔 불빛 종이를 깔고 밀려 들어온다. 닫으면(가장자리 밀기 포함) 오늘로 돌아가고 키보드는 올리지 않는다 */}
+                    {/* 하루 마무리는 등잔 불빛 종이를 깔고 들어온다. 닫으면 오늘로 돌아가고 키보드는 올리지 않는다 */}
                     <Stack.Screen
                       name="evening"
-                      options={{ contentStyle: styles.evening }}
+                      options={{ contentStyle: styles.evening, animation: switchAnimation }}
                       listeners={{ beforeRemove: () => Keyboard.dismiss() }}
                     >
                       {({ navigation }) => (
@@ -500,7 +507,7 @@ function MainContent({ db, userId }: { db: Db; userId: string }) {
                         </>
                       )}
                     </Stack.Screen>
-                    <Stack.Screen name="archive">
+                    <Stack.Screen name="archive" options={{ animation: switchAnimation }}>
                       {({ navigation }) => (
                         <ArchiveScreen
                           db={db}
@@ -538,6 +545,13 @@ function MainContent({ db, userId }: { db: Db; userId: string }) {
               </PaneContext.Provider>
             )}
           </ScreenEnter>
+          {tabBar && !keyboardUp && (
+            <TabBar
+              current={route === 'review' ? 'archive' : route === 'settings' ? undefined : route}
+              onSelect={selectSection}
+              archiveRef={sidebarArchiveRef}
+            />
+          )}
         </SafeAreaView>
         {canReopenSidebar && <SidebarOpenButton onPress={toggleSidebar} />}
       </View>
@@ -551,6 +565,21 @@ function MainContent({ db, userId }: { db: Db; userId: string }) {
       <DeletingAccountOverlay visible={deletingAccount} />
     </View>
   );
+}
+
+// 화면 아래에 키보드가 올라와 있는가(iOS는 올라오기 시작할 때, Android는 다 올라온 뒤 알린다)
+function useKeyboardUp() {
+  const [up, setUp] = useState(false);
+  useEffect(() => {
+    const ios = Platform.OS === 'ios';
+    const show = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', () => setUp(true));
+    const hide = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () => setUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return up;
 }
 
 // 온보딩·오늘이 바뀌면 새 화면만 살짝 올라오며 나타난다(이전 화면은 바로 사라진다). 오늘 아래 화면은 스택이 밀어 넣는다.

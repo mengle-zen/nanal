@@ -31,7 +31,8 @@ export function SettingsScreen({ db, onClose }: { db: Db; onClose: () => void })
     <View style={styles.flex}>
       <Paper />
       <ScrollView contentContainerStyle={[styles.container, centered && styles.centered]}>
-        <PageHeader title="설정" onBack={onClose} largeBack />
+        {/* 휴대폰 탭바에는 설정 칸이 없어, 오늘로 돌아가기를 늘 둔다 */}
+        <PageHeader title="설정" onBack={onClose} largeBack sidebarBack={centered} />
 
         <Profile account={account} />
 

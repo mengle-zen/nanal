@@ -36,6 +36,7 @@ export const colors = {
   endpaperEdge: '#D6C9B0',
   highlight: '#F1DE8A', // 형광펜. 뜻은 '중요' 하나뿐이다(선택 표시에 쓰지 않는다)
   tape: 'rgba(214, 194, 146, 0.7)', // 종이 테이프
+  tapeBlue: '#CDD7E6', // 오늘 장 묶음 머리글의 마스킹테이프. 남색 글씨 대비 9:1
   postit: '#F3E4A8',
   postitText: '#6B5D3F',
   // 온보딩 노트의 붉은 메모 글씨와 그림(테라코타). 종이 대비 4.85:1(AA).

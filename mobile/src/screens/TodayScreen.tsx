@@ -24,7 +24,7 @@ import {
   undoMigration,
   updateItemText,
 } from '../items/repo';
-import { formatDayWithWeekday, formatLongDate, logicalDate } from '../lib/date';
+import { addDays, formatDayWithWeekday, formatLongDate, logicalDate } from '../lib/date';
 import { moveIndex } from '../lib/position';
 import { countRecordedDays } from '../stats/recordedDays';
 import { userMessage } from '../lib/userError';
@@ -35,7 +35,9 @@ import { useReduceMotion } from '../ui/useReduceMotion';
 import { ItemRow } from './today/ItemRow';
 import { openRow } from './today/swipe';
 import { useDragReorder } from './today/useDragReorder';
-import { dayIndexAfterMove, type PageRow, pageRows, SECTION_LABEL } from './today/sections';
+import { dayIndexAfterMove, type PageRow, pageRows } from './today/sections';
+import { TapeLabel } from './today/TapeLabel';
+import { KindTabs } from './today/KindTabs';
 import { MarginRule, NOTE_MARGIN, RuledFill, useRuleGap } from './today/NotebookPage';
 import { Ribbon } from './today/Ribbon';
 import type { LinkAction } from '../lib/deepLink';
@@ -83,7 +85,7 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   const today = logicalDate(new Date());
   const [items, setItems] = useState<Item[]>([]);
   const [candidates, setCandidates] = useState<Item[]>([]);
-  const [recordedDays, setRecordedDays] = useState(0);
+  const [dayNumber, setDayNumber] = useState(1); // 오늘이 기록한 날 중 몇 번째인가('N번째 나날')
   const [loaded, setLoaded] = useState(false); // 처음 목록을 불러왔다(넘어온 일 수를 알아야 포커스를 정한다)
   const [error, setError] = useState<string | null>(null);
   const [organizeOpen, setOrganizeOpen] = useState(false);
@@ -104,15 +106,14 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   const pageRef = useRef<View>(null);
   const scrollY = useRef(new Animated.Value(0)).current; // 여백선이 목록 머리를 따라 움직이게
   const [headerH, setHeaderH] = useState(0);
-  const [keyboardUp, setKeyboardUp] = useState(false); // 맺음말은 페이지 맨 아래 자리라 키보드를 따라 올라오지 않는다
   const [eveningW, setEveningW] = useState(0); // 책갈피 끈을 하루 마무리 버튼 왼쪽에 매달려고 잰다
   // 아이패드·Mac: 사이드바가 하루 마무리·지난 기록을 맡고, 공책은 읽기 좋은 폭으로 가운데에 모은다.
   // 창이 충분히 넓으면(wide) 넘어온 일·끝낸 일 수·기호 설명을 오른쪽 칸으로 뺀다.
   const pane = usePane();
   const layout = useLayoutClass();
-  // 넓은 배치는 창 폭으로, 리본·하루 마무리 버튼은 사이드바가 안 보일 때(접었거나 휴대폰) 보인다
+  // 휴대폰은 아래 탭바, 넓은 배치는 사이드바가 화면 사이를 오간다. 사이드바를 접었을 때만 리본·하루 마무리 버튼이 보인다
   const roomy = layout !== 'compact';
-  const showNav = !pane.sidebar;
+  const showNav = !pane.nav;
   const panel = roomy && layout === 'wide' && pane.width >= PANEL_MIN;
   const s = useSpace();
   const ruleGap = useRuleGap();
@@ -134,15 +135,6 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   );
 
   // 표지가 다 펼쳐진 뒤에만 true가 된다(Main이 Cover의 onOpened로 알려 준다). 그래서 기다리지 않고 바로 포커스한다.
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardWillShow', () => setKeyboardUp(true));
-    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardUp(false));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
   useEffect(() => {
     if (!focusReady || !loaded) return;
     // 넘어온 일이 많으면 키보드로 포스트잇을 가리지 않고 먼저 정리할 수 있게 둔다
@@ -187,7 +179,8 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listItemsForDate(db, today), listMigrationCandidates(db, today), countRecordedDays(db, today)])
+    // 어제까지 기록한 날 + 1: 오늘 아직 적은 게 없어도 오늘이 몇 번째 날인지 보인다
+    Promise.all([listItemsForDate(db, today), listMigrationCandidates(db, today), countRecordedDays(db, addDays(today, -1))])
       .then(([i, c, n]) => {
         if (cancelled) return;
         if (reorder.current) {
@@ -197,7 +190,7 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
         }
         setItems(i);
         setCandidates(c);
-        setRecordedDays(n);
+        setDayNumber(n + 1);
         setLoaded(true);
         setError(null);
       })
@@ -382,15 +375,7 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   const firstId = rows.find((r) => r.type === 'item')?.key; // 코치마크가 가리키는 첫 줄(머리글 빼고)
   const renderItem = useCallback<ListRenderItem<PageRow>>(
     ({ item: row }) => {
-      if (row.type === 'head') {
-        return (
-          <View style={[styles.sectionHead, { height: ruleGap }]}>
-            <Txt variant="hand" accessibilityRole="header" style={styles.sectionHeadText}>
-              {SECTION_LABEL[row.section]}
-            </Txt>
-          </View>
-        );
-      }
+      if (row.type === 'head') return <TapeLabel section={row.section} count={row.count} />;
       const { item, scope } = row;
       const at = scope.indexOf(item.id);
       return (
@@ -418,7 +403,7 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
       />
       );
     },
-    [priorityFull, ruleGap, firstId, onAdvance, onTogglePriority, onEdit, onPostpone, onDrop, onDelete, onPriorityFull, onRevealEdit, drag.reorder, onMove],
+    [priorityFull, firstId, onAdvance, onTogglePriority, onEdit, onPostpone, onDrop, onDelete, onPriorityFull, onRevealEdit, drag.reorder, onMove],
   );
 
   // 포스트잇만 목록 머리에 둬서 후보가 많아도 함께 스크롤된다. 입력칸은 목록 위에 고정한다
@@ -431,52 +416,81 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
   // 목록이 고정된 입력칸 밑으로 지나가기 시작하면 경계에 옅은 그늘을 깐다
   const edgeShade = scrollY.interpolate({ inputRange: [0, 12], outputRange: [0, 1], extrapolate: 'clamp' });
 
+  const accountButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="설정"
+      accessibilityHint="알림을 켜고 끄거나 로그아웃할 수 있어요"
+      hitSlop={CHIP_SLOP}
+      style={dimPressed(styles.account)}
+      onPress={onOpenSettings}
+    >
+      <Txt variant="medium" compact style={styles.accountText}>
+        {accountInitial(account)}
+      </Txt>
+    </Pressable>
+  );
+  // 입력칸: 넓은 배치는 탭 위에 밑줄 한 줄, 휴대폰은 화면 아래 둥근 칸
+  const composer = (
+    <Composer
+      inputRef={inputRef}
+      rowRef={composerRowRef}
+      captureRef={captureRef}
+      voice={VoiceSheet !== null}
+      onCapture={onCapture}
+      kind={tab}
+      pill={!roomy}
+      onSubmit={submit}
+    />
+  );
+
   // 날짜 머리 + 공책 한 쪽. 휴대폰에서는 화면에 바로, 넓은 배치에서는 가운데 칸에 놓는다
   const notebook = (
     <>
       {/* 머리 빈 곳을 누르면 키보드가 내려간다. 알림 줄은 머리 아래 여백에 겹쳐 띄워 목록을 밀지 않는다.
           스크린 리더가 날짜 → 하루 마무리 → 지난 기록 순서로 읽도록 날짜를 먼저 그리고, 화면에서는 뒤집어 쌓아 버튼을 위에 둔다 */}
       <Pressable accessible={false} style={styles.header} onPress={Keyboard.dismiss}>
-        <View style={styles.headerText}>
+        <View style={styles.dateRow}>
           <Txt
             variant="title"
             accessibilityRole="header"
-            style={styles.date}
+            style={[styles.date, !roomy && styles.dateCompact]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
           >
             {formatLongDate(today)}
           </Txt>
-          <Txt variant="hand">기록한 날 {recordedDays}일</Txt>
+          <Txt variant="title" style={styles.dayNumber} numberOfLines={1}>
+            {dayNumber}번째 나날
+          </Txt>
         </View>
-        {showNav && (
-          <View style={styles.headerActions}>
-            {/* 왼쪽: 계정 → 설정(알림·이 노트의 주인·정보). 오른쪽: 하루 마무리 */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="설정"
-              accessibilityHint="알림을 켜고 끄거나 로그아웃할 수 있어요"
-              hitSlop={CHIP_SLOP}
-              style={dimPressed(styles.account)}
-              onPress={onOpenSettings}
-            >
-              <Txt variant="medium" style={styles.accountText}>
-                {accountInitial(account)}
-              </Txt>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              hitSlop={CHIP_SLOP}
-              style={dimPressed(styles.evening)}
-              onPress={onOpenEvening}
-              onLayout={(e) => setEveningW(e.nativeEvent.layout.width)}
-            >
-              <Txt variant="medium" style={styles.eveningText}>
-                하루 마무리
-              </Txt>
-            </Pressable>
+        {!roomy ? (
+          // 휴대폰: 맨 위에 나날 이름과 설정(이니셜). 화면 사이는 아래 탭바가 오간다
+          <View style={styles.topBar}>
+            <Txt variant="title" style={styles.brand}>
+              나날
+            </Txt>
+            {accountButton}
           </View>
+        ) : (
+          showNav && (
+            <View style={styles.headerActions}>
+              {/* 사이드바를 접었을 때. 왼쪽: 계정 → 설정(알림·이 노트의 주인·정보). 오른쪽: 하루 마무리 */}
+              {accountButton}
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={CHIP_SLOP}
+                style={dimPressed(styles.evening)}
+                onPress={onOpenEvening}
+                onLayout={(e) => setEveningW(e.nativeEvent.layout.width)}
+              >
+                <Txt variant="medium" style={styles.eveningText}>
+                  하루 마무리
+                </Txt>
+              </Pressable>
+            </View>
+          )
         )}
         {(error || notice) && (
           <Txt
@@ -489,25 +503,16 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
         )}
       </Pressable>
   
-      {/* 지난 기록 책갈피 끈: 하루 마무리 버튼 왼쪽, 화면 맨 위에 매달린다 */}
-      {showNav && onOpenArchive && eveningW > 0 && (
+      {/* 지난 기록 책갈피 끈: 사이드바를 접었을 때 하루 마무리 버튼 왼쪽, 화면 맨 위에 매달린다 */}
+      {roomy && showNav && onOpenArchive && eveningW > 0 && (
         <Ribbon targetRef={ribbonRef} onPress={onOpenArchive} style={{ right: SCREEN_X + eveningW + RIBBON_GAP }} />
       )}
   
-      {/* 할 일·메모 탭과 입력칸은 고정. 그 아래 고른 탭의 목록만 스크롤된다.
-          입력칸과 목록 사이는 좁게 두고, 숨 쉴 자리는 목록 맨 위 여백(LIST_TOP)으로 넣어 스크롤하면 함께 올라가게 한다 */}
+      {/* 입력칸(넓은 배치는 위, 휴대폰은 아래)과 할 일·메모 탭은 고정. 그 사이 고른 탭의 목록만 스크롤된다.
+          탭과 목록 사이는 좁게 두고, 숨 쉴 자리는 목록 맨 위 여백(LIST_TOP)으로 넣어 스크롤하면 함께 올라가게 한다 */}
       <View style={styles.writing}>
-        <Composer
-          inputRef={inputRef}
-          rowRef={composerRowRef}
-          captureRef={captureRef}
-          voice={VoiceSheet !== null}
-          onCapture={onCapture}
-          kind={tab}
-          onKindChange={setTab}
-          counts={counts}
-          onSubmit={submit}
-        />
+        {roomy && composer}
+        <KindTabs kind={tab} counts={counts} onChange={setTab} />
 
         {/* 공책 한 쪽: 여백선은 목록 뒤에 깔리고, 빈 줄은 목록 꼬리에서 함께 스크롤된다 */}
         <View ref={pageRef} style={styles.page}>
@@ -534,12 +539,12 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
             onScrollBeginDrag={openRow.closeAll} // 목록을 굴리면 밀어 연 줄을 닫는다
             ListEmptyComponent={
               // 빈 날은 첫 두 줄에 흐리게 적어 두고, 그 아래로 빈 줄이 이어진다. 스크린 리더는 한 번에 읽는다
-              <View ref={emptyRef} accessible accessibilityLabel={`${EMPTY_TITLE}. ${EMPTY_HINT}`}>
+              <View ref={emptyRef} accessible accessibilityLabel={`${EMPTY_TITLE}. ${roomy ? EMPTY_HINT : EMPTY_HINT_BELOW}`}>
                 <View style={[styles.emptyRow, { minHeight: ruleGap }]}>
                   <Txt style={styles.empty}>{EMPTY_TITLE}</Txt>
                 </View>
                 <View style={[styles.emptyRow, { minHeight: ruleGap }]}>
-                  <Txt style={styles.emptyHint}>{EMPTY_HINT}</Txt>
+                  <Txt style={styles.emptyHint}>{roomy ? EMPTY_HINT : EMPTY_HINT_BELOW}</Txt>
                 </View>
               </View>
             }
@@ -547,15 +552,13 @@ export function TodayScreen({ db, version, onChanged, onOpenEvening, onOpenArchi
               // 목록 아래 빈 곳까지 빈 줄로 채워, 누르면 키보드가 내려간다
               <Pressable accessible={false} style={styles.footerWrap} onPress={Keyboard.dismiss}>
                 <RuledFill />
-                <Txt variant="hand" style={[styles.footer, keyboardUp && styles.footerHidden]}>
-                  오늘도 한 줄씩.
-                </Txt>
               </Pressable>
             }
             extraData={priorityFull}
             renderItem={renderItem}
           />
         </View>
+        {!roomy && <View style={styles.composerBar}>{composer}</View>}
       </View>
     </>
   );
@@ -637,22 +640,28 @@ const AFTER_VOICE_MS = 600; // 말로 적기 시트가 내려가는 애니메이
 const LOAD_FAILED = '오늘 기록을 불러오지 못했어요. 잠시 뒤에 다시 열어 주세요';
 const EMPTY_TITLE = '아직 적은 줄이 없어요';
 const EMPTY_HINT = '위 칸에 한 줄 적어 볼까요?';
+const EMPTY_HINT_BELOW = '아래 칸에 한 줄 적어 볼까요?'; // 휴대폰은 입력칸이 화면 아래에 있다
 // 목록은 gesture-handler의 FlatList: 줄 밀기(Pan)와 목록 스크롤이 서로 손가락을 빼앗지 않게 조율된다
 const AnimatedList = Animated.createAnimatedComponent(FlatList<PageRow>);
 const LIST_TOP = 14; // 목록 맨 위 여백(스크롤하면 함께 올라간다)
 const REORDER = LayoutAnimation.create(220, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity); // 끈의 44pt 누르는 영역이 하루 마무리 버튼에 겹치지 않게
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper, paddingHorizontal: SCREEN_X, paddingTop: 12, gap: 24 },
-  containerRoomy: { paddingHorizontal: WIDE.pageX, paddingTop: 0 },
+  container: { flex: 1, backgroundColor: colors.paper, paddingHorizontal: SCREEN_X, gap: 18 },
+  containerRoomy: { paddingHorizontal: WIDE.pageX, paddingTop: 0, gap: 24 },
   // 공책 칸(읽기 폭까지)과 오른쪽 칸을 한 줄로 놓고 가운데에 모은다
   roomy: { flex: 1, flexDirection: 'row', justifyContent: 'center' },
   column: { flex: 1, maxWidth: WIDE.readingWidth },
-  // 버튼은 맨 위 오른쪽 도구줄, 그 아래 날짜를 한 줄 전체 너비로(날짜를 먼저 그리므로 뒤집어 쌓는다)
+  // 버튼 줄은 맨 위, 그 아래 날짜와 'N번째 나날'을 한 줄로(날짜를 먼저 그리므로 뒤집어 쌓는다)
   header: { flexDirection: 'column-reverse', gap: 10, zIndex: 1 },
   message: { position: 'absolute', top: '100%', left: 0, right: 0, fontSize: 13, lineHeight: 18 },
-  headerText: { gap: 4 },
-  date: { fontSize: 30, letterSpacing: -0.5 },
+  dateRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
+  date: { flexShrink: 1, fontSize: 30, letterSpacing: -0.5 },
+  dateCompact: { fontSize: 26 },
+  dayNumber: { fontSize: 15, color: colors.muted },
+  // 휴대폰 맨 위 줄: 나날 이름과 설정
+  topBar: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  brand: { fontSize: 22, color: colors.navy },
   headerActions: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
   account: {
     width: CHIP_H,
@@ -677,6 +686,13 @@ const styles = StyleSheet.create({
   notice: { color: colors.inkSoft },
   error: { color: colors.danger },
   writing: { flex: 1, gap: 6 },
+  // 휴대폰 아래 입력칸: 목록과 옅은 선으로 나누고, 그 아래 탭바(Main)가 붙는다
+  composerBar: {
+    marginHorizontal: -SCREEN_X + 12,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+  },
   // 고정 영역 아래 경계: 목록이 밑으로 지나갈 때만 보이는 옅은 선과 그늘
   edge: {
     position: 'absolute',
@@ -706,15 +722,4 @@ const styles = StyleSheet.create({
   },
   empty: { color: colors.muted },
   emptyHint: { color: colors.muted, fontSize: 14 },
-  // 묶음 머리글: 공책 한 줄 높이, 글 자리에서 시작해 줄 바로 위에 앉는다
-  sectionHead: {
-    justifyContent: 'flex-end',
-    paddingLeft: NOTE_MARGIN - SCREEN_X + 8,
-    paddingBottom: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.ruled,
-  },
-  sectionHeadText: { fontSize: 20, lineHeight: 26 },
-  footerHidden: { opacity: 0 },
-  footer: { alignSelf: 'center', marginTop: 24, marginBottom: 24, fontSize: 20, color: colors.muted },
 });
